@@ -1,7 +1,8 @@
 // src/app/(app)/work-calendar/page.tsx
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Briefcase, Clock, CalendarDays, User, FileText, X } from "lucide-react";
+// *** MODIFIED: เพิ่ม Maximize, Minimize (มีการเพิ่มไปแล้วในโค้ดเดิม) ***
+import { ChevronLeft, ChevronRight, Briefcase, Clock, CalendarDays, User, FileText, X, Maximize, Minimize } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -13,12 +14,12 @@ import { useRouter } from "next/navigation";
  */
 
 // *** NEW: แผนที่สำหรับแปลง Tailwind Class เป็นค่า Hex เพื่อใช้ใน CSS Animation Variable ***
-// (เก็บไว้เฉพาะ Hex ที่จำเป็นสำหรับ Flashing Animation)
 const colorMap: { [key: string]: string } = {
     // Hex Codes for the main colors (used for flashing/default daily view background)
     "blue": "#3B82F6",    // Corresponds to bg-blue-500
     "green": "#10B981",   // Corresponds to bg-green-500
-    "purple": "#8B5CF6",  // Corresponds to bg-purple-500
+    // *** MODIFIED: เปลี่ยน 'purple' เป็น 'pink' และเปลี่ยน Hex Code เป็นของสีชมพู (#EC4899) ***
+    "pink": "#EC4899",     // Corresponds to bg-pink-500 (แทน purple)
     "gray": "#9CA3AF",    // Corresponds to bg-gray-400
     // *** MODIFIED: Add Yellow Hex for Flashing (bg-yellow-500) ***
     "yellow": "#F59E0B",  // NEW
@@ -115,12 +116,12 @@ const getColorClasses = (workerRole: string | undefined) => {
                 textColor: "text-green-700",
                 hexColor: colorMap["green"] // For flashing (i.e., #10B981)
             }; 
-        case "ช่างเดินระบบ":
+        case "ช่างเดินระบบ": // *** MODIFIED: เปลี่ยนสีเป็นชมพูอ่อน ***
             return { 
-                bgColor: "bg-purple-100", 
-                borderColor: "border-purple-500", 
-                textColor: "text-purple-700",
-                hexColor: colorMap["purple"] // For flashing
+                bgColor: "bg-pink-100", 
+                borderColor: "border-pink-500", 
+                textColor: "text-pink-700",
+                hexColor: colorMap["pink"] // ใช้ key 'pink'
             }; 
         default:
             return { 
@@ -226,7 +227,8 @@ const calculateTracks = (works: DisplayWork[]): DisplayWork[] => {
 
 export default function WorkCalendar() {
     const router = useRouter();
-    const supabase = useMemo(() => createClient(), []);
+    // FIX: Removed unnecessary createClient dependency inside useMemo if not needed.
+    const supabase = useMemo(() => createClient(), []); 
 
     const [userId, setUserId] = useState<string | null>(null);
     const [hasSession, setHasSession] = useState<boolean | null>(null);
@@ -251,6 +253,10 @@ export default function WorkCalendar() {
         works: DisplayWork[]; 
         dateKey: number; 
     } | null>(null);
+
+    // *** NEW: State สำหรับขยายปฏิทินเต็มจอ ***
+    const [isCalendarZoomed, setIsCalendarZoomed] = useState(false); 
+
 
     /**
      * Helper function to check if a pending work is past its start time (Past Due).
@@ -511,7 +517,11 @@ export default function WorkCalendar() {
         return new Date(d.getFullYear(), d.getMonth(), 1).getDay();
     };
     const navigateMonth = (dir: number) => { 
-        setCurrentView('calendar'); // กลับไปที่ Calendar View เมื่อเปลี่ยนเดือน
+        // *** MODIFIED: ไม่ต้องออกจากโหมดซูม (isCalendarZoomed) เมื่อเปลี่ยนเดือนแล้ว ***
+        if (!isCalendarZoomed) {
+            setCurrentView('calendar'); // กลับไปที่ Calendar View เมื่อเปลี่ยนเดือนในโหมดปกติเท่านั้น
+        }
+        
         const nd = new Date(currentDate); 
         nd.setMonth(currentDate.getMonth() + dir); 
         setCurrentDate(nd); 
@@ -547,9 +557,15 @@ export default function WorkCalendar() {
         const firstDay = getFirstDayOfMonth(currentDate); 
         const days: React.ReactNode[] = [];
         
+        // กำหนดความสูงของช่องวันตามโหมด
+        const dayCellHeightClass = isCalendarZoomed ? "h-32" : "h-24"; // *** MODIFIED: h-32 สำหรับโหมดซูม ***
+        
+        // *** NEW: กำหนดจำนวนงานสูงสุดที่จะแสดงในช่องวัน ***
+        const maxWorksToShow = isCalendarZoomed ? 5 : 2; 
+
         // Add empty divs for the days before the 1st of the month
         for (let i = 0; i < firstDay; i++) {
-            days.push(<div key={`empty-${i}`} className="h-24 border border-gray-200 bg-gray-50" />);
+            days.push(<div key={`empty-${i}`} className={`${dayCellHeightClass} border border-gray-200 bg-gray-50`} />);
         }
         
         // Render days of the month
@@ -573,12 +589,14 @@ export default function WorkCalendar() {
                     dateKey: dateObj.getTime(),
                 }); 
                 setCurrentView('daily');
+                // *** NEW: ออกจากโหมดซูม เมื่อสลับไป Daily View ***
+                setIsCalendarZoomed(false); 
             };
 
             days.push(
                 <div 
                     key={date} 
-                    className={`h-24 border border-gray-200 p-1 relative overflow-hidden ${
+                    className={`${dayCellHeightClass} border border-gray-200 p-1 relative overflow-hidden ${ // *** MODIFIED: ใช้ dayCellHeightClass ***
                         allDayWorks.length > 0 ? "cursor-pointer hover:bg-gray-100 transition-colors" : ""
                     } ${
                         today ? "bg-blue-50 border-blue-300" : "bg-white"
@@ -590,8 +608,9 @@ export default function WorkCalendar() {
                     </div>
                     {dayWorks.length > 0 && (
                         <div className="mt-1 space-y-1">
-                            {/* Show up to 2 work items */}
-                            {dayWorks.slice(0, 2).map((work, idx) => {
+                            {/* Show up to maxWorksToShow work items */}
+                            {/* *** MODIFIED: ใช้ maxWorksToShow ในการ slice *** */}
+                            {dayWorks.slice(0, maxWorksToShow).map((work, idx) => { 
                                 
                                 const isFlashingGreen = work.status === 'inprogress';
                                 const isFlashingRed = isPastDuePending(work); 
@@ -627,8 +646,9 @@ export default function WorkCalendar() {
                                     </div>
                                 );
                             })}
-                            {/* Show 'more' link if there are more than 2 work items */}
-                            {dayWorks.length > 2 && (
+                            {/* Show 'more' link if there are more than maxWorksToShow work items */}
+                            {/* *** MODIFIED: ใช้ maxWorksToShow ในเงื่อนไขและการคำนวณจำนวนที่ซ่อน *** */}
+                            {dayWorks.length > maxWorksToShow && ( 
                                 <div
                                     className="text-xs text-blue-600 font-medium px-1 mt-1"
                                     onClick={(e) => {
@@ -636,7 +656,7 @@ export default function WorkCalendar() {
                                         handleClickDayCell(); 
                                     }}
                                 >
-                                    <span className="hover:underline">+{dayWorks.length - 2} รายการเพิ่มเติม</span>
+                                    <span className="hover:underline">+{dayWorks.length - maxWorksToShow} รายการเพิ่มเติม</span>
                                 </div>
                             )}
                         </div>
@@ -681,6 +701,7 @@ export default function WorkCalendar() {
         const TRACK_LABEL_WIDTH_PX = 70; // Width for the first column (Track label)
 
         return (
+            // Daily View takes up all 4 columns on large screens (col-span-4)
             <div className="lg:col-span-4 bg-white rounded-lg shadow-xl p-6 animate-fadeIn">
                 <div className="flex justify-between items-center border-b pb-4 mb-4">
                     <h2 className="text-2xl font-bold text-gray-900">
@@ -855,8 +876,8 @@ export default function WorkCalendar() {
                             <span className="text-green-700">ช่างพรินเตอร์</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded border border-purple-500 bg-purple-100"></div>
-                            <span className="text-purple-700">ช่างเดินระบบ</span>
+                            <div className="w-4 h-4 rounded border border-pink-500 bg-pink-100"></div> {/* *** MODIFIED: เปลี่ยนเป็น pink-500 และ bg-pink-100 *** */}
+                            <span className="text-pink-700">ช่างเดินระบบ</span> {/* *** MODIFIED: เปลี่ยนเป็น text-pink-700 *** */}
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-4 h-4 rounded border border-gray-500 bg-gray-100"></div>
@@ -880,312 +901,400 @@ export default function WorkCalendar() {
             {/* *** ใส่ CSS Animation ที่นี่ *** */}
             <style dangerouslySetInnerHTML={{ __html: customStyles }} />
 
-            <div className="min-h-screen bg-gray-100 p-6">
-                <div className="max-w-6xl mx-auto">
-                    {/* Header */}
-                    <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900">ปฏิทินตารางงานบริษัท</h1>
-                                <p className="text-gray-600 mt-1">ติดตามตารางงานทั้งหมด</p>
-                            </div>
-                            {/* NEW: Back button for Daily View in Header */}
-                            {currentView === 'daily' && (
-                                <button
-                                    onClick={() => setCurrentView('calendar')}
-                                    className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                    <ChevronLeft className="w-4 h-4" /> กลับสู่ปฏิทิน
-                                </button>
-                            )}
+            {/* *** START: Conditional Rendering สำหรับโหมดซูม *** */}
+            {isCalendarZoomed ? (
+                // โหมดเต็มจอ (Full-Screen Zoom) - แสดงเฉพาะ Calendar
+                <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fadeIn">
+                    
+                    {/* Calendar Navigation - ติดด้านบน */}
+                    <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                        <h2 className="text-2xl font-semibold text-gray-900">
+                            {currentDate.toLocaleDateString("th-TH", { month: "long", year: "numeric" })}
+                        </h2>
+                        <div className="flex gap-4">
+                            {/* ปุ่มนำทาง (แสดงเสมอในโหมดซูม) */}
+                            <button 
+                                onClick={() => navigateMonth(-1)} 
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
+                                aria-label="เดือนก่อนหน้า"
+                            >
+                                <ChevronLeft className="w-6 h-6" />
+                            </button>
+                            <button 
+                                onClick={() => setCurrentDate(new Date())} 
+                                className="px-4 py-2 text-base bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                            >
+                                วันนี้
+                            </button>
+                            <button 
+                                onClick={() => navigateMonth(1)} 
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
+                                aria-label="เดือนถัดไป"
+                            >
+                                <ChevronRight className="w-6 h-6" />
+                            </button>
+                            
+                            {/* ปุ่มออกจากโหมดซูม */}
+                            <button
+                                onClick={() => setIsCalendarZoomed(false)}
+                                className="px-6 py-3 text-sm rounded-lg transition-colors flex items-center gap-2 bg-red-500 text-white hover:bg-red-600"
+                                title="ย่อมุมมอง"
+                            >
+                                <Minimize className="w-5 h-5" /> ออกจากโหมดซูม
+                            </button>
                         </div>
                     </div>
-
-                    {/* Error Message */}
-                    {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                            <p className="font-medium">เกิดข้อผิดพลาด:</p>
-                            <p className="text-sm">{error}</p>
-                            {hasSession === false && (
-                                <button 
-                                    onClick={() => router.push("/auth/login")} 
-                                    className="mt-3 text-sm px-3 py-2 rounded-md bg-neutral-900 text-white hover:bg-neutral-800 transition-colors"
-                                >
-                                    เข้าสู่ระบบอีกครั้ง
-                                </button>
+                    
+                    {/* Calendar Content - เต็มพื้นที่ที่เหลือ */}
+                    <div className="flex-1 p-4 overflow-auto">
+                        
+                        {/* Day Names */}
+                        <div className="grid grid-cols-7 text-center font-bold text-gray-700 mb-2 border-b border-gray-300">
+                            {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'].map(day => (
+                                <div key={day} className="text-base py-3">{day}</div>
+                            ))}
+                        </div>
+                        
+                        {/* Days Grid */}
+                        <div className="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+                            {loading ? (
+                                <div className="col-span-7 h-96 flex items-center justify-center">
+                                    <p className="text-gray-500">กำลังโหลดข้อมูลตารางงาน...</p>
+                                </div>
+                            ) : (
+                                renderCalendarDays()
                             )}
                         </div>
-                    )}
-
-                    {/* Main Layout (Calendar + Sidebar OR Daily View) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-                        {/* Conditional Rendering for Main Content */}
-                        {currentView === 'calendar' ? (
-                            <>
-                                {/* Calendar View */}
-                                <div className="lg:col-span-3">
-                                    <div className="bg-white rounded-lg shadow-sm">
-                                        {/* Calendar Navigation */}
-                                        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                                            <h2 className="text-xl font-semibold text-gray-900">
-                                                {currentDate.toLocaleDateString("th-TH", { month: "long", year: "numeric" })}
-                                            </h2>
-                                            <div className="flex gap-2">
-                                                <button 
-                                                    onClick={() => navigateMonth(-1)} 
-                                                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
-                                                    aria-label="เดือนก่อนหน้า"
-                                                >
-                                                    <ChevronLeft className="w-5 h-5" />
-                                                </button>
-                                                <button 
-                                                    onClick={() => setCurrentDate(new Date())} 
-                                                    className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                                                >
-                                                    วันนี้
-                                                </button>
-                                                <button 
-                                                    onClick={() => navigateMonth(1)} 
-                                                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
-                                                    aria-label="เดือนถัดไป"
-                                                >
-                                                    <ChevronRight className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="p-4">
-                                            {/* Day Names */}
-                                            <div className="grid grid-cols-7 text-center font-medium text-gray-500 mb-2">
-                                                {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'].map(day => (
-                                                    <div key={day} className="text-sm">{day}</div>
-                                                ))}
-                                            </div>
-
-                                            {/* Days Grid */}
-                                            <div className="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
-                                                {loading ? (
-                                                    <div className="col-span-7 h-96 flex items-center justify-center">
-                                                        <p className="text-gray-500">กำลังโหลดข้อมูลตารางงาน...</p>
-                                                    </div>
-                                                ) : (
-                                                    renderCalendarDays()
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Sidebar */}
-                                <div className="space-y-6">
-                                    {/* Work Statistics */}
-                                    <div className="bg-white rounded-lg shadow-sm p-6">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-4">สถิติตารางงาน</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-gray-600">รวมทั้งหมด</span>
-                                                <span className="font-semibold text-lg">{workSchedules.length}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-gray-600">กำลังดำเนินการ</span>
-                                                <span className="font-semibold text-lg text-blue-600">{workSchedules.filter(t=>t.status==='inprogress').length}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-gray-600">เสร็จสมบูรณ์</span>
-                                                <span className="font-semibold text-lg text-green-600">{workSchedules.filter(t=>t.status==='complete').length}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* History Search (ค้นหางานที่เสร็จสมบูรณ์) */}
-                                    <div className="bg-white rounded-lg shadow-sm p-6">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                                            📜 History Search (งานที่เสร็จสมบูรณ์)
-                                        </h3>
-                                        <input
-                                            type="text"
-                                            placeholder="ค้นหารายละเอียดงาน, ช่าง, หน่วยงาน, หรือ DD/MM/YYYY (พ.ศ. หรือ ค.ศ.)..."
-                                            value={searchTerm}
-                                            onChange={(e) => handleSearch(e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mb-4 text-sm"
-                                        />
-
-                                        {(searchTerm.trim() === '' && workSchedules.filter(w => w.status === 'complete').length === 0) ? (
-                                            <p className="text-gray-500 text-sm">ไม่พบงานที่เสร็จสมบูรณ์ในระบบ</p>
-                                        ) : (
-                                            <>
-                                                <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                                                    {pastWorkResults.map((work) => (
-                                                        <div
-                                                            key={work.id}
-                                                            className={`p-3 border-l-4 ${ work.borderColor } bg-gray-50 rounded-r-lg cursor-pointer hover:bg-gray-100 transition`}
-                                                            onClick={() => { setSelectedWork(work); setShowWorkModal(true); }}
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="font-semibold text-gray-900 text-sm break-words">
-                                                                        {work.title}
-                                                                    </p>
-                                                                    <p className="text-xs text-gray-500">
-                                                                        {work.department} | ช่าง: {work.worker}
-                                                                    </p>
-                                                                    {/* FIX FOR RED SQUIGGLY LINE */}
-                                                                    <p className="text-xs text-gray-400">
-                                                                        {`${work.startTime.toLocaleDateString("th-TH", { day: "numeric", month: "short", })} ${work.startTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
-                                                                    </p>
-                                                                </div>
-                                                                <ChevronRight className="w-4 h-4 text-gray-400" />
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {/* Work Status Legend */}
-                                    <div className="bg-white rounded-lg shadow-sm p-6">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                                            สถานะงาน
-                                        </h3>
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
-                                                <span className="text-gray-700">Pending (รอดำเนินการ)</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                                                <span className="text-gray-700">In Progress (กำลังดำเนินการ)</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-3 h-3 rounded-full bg-green-600"></div>
-                                                <span className="text-gray-700">Complete (เสร็จสมบูรณ์)</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 pt-2 border-t mt-2">
-                                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                                <span className="text-red-700 font-medium">⚠️ Past Due (งานล่าช้า)</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                </div>
-                            </>
-                        ) : (
-                            // Daily View takes up all 4 columns on large screens
-                            <DailyWorkSchedule />
-                        )}
-
-                        {/* ------------------------------------------------------------------ */}
-                        {/* Work Detail Modal (ยังคงอยู่) */}
-                        {/* ------------------------------------------------------------------ */}
-                        {showWorkModal && selectedWork && (
-                            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn" onClick={() => setShowWorkModal(false)}>
-                                <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full mx-4 transform animate-slideUp max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                    
-                                    <div className="flex justify-between items-center p-6 border-b">
-                                        <h3 className="text-xl font-bold text-gray-900">รายละเอียดงาน</h3>
-                                        <button onClick={() => setShowWorkModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                                            <X className="w-6 h-6" />
-                                        </button>
-                                    </div>
-
-                                    <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(80vh-140px)]">
-                                        {/* Date and Time */}
-                                        <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-lg">
-                                            <CalendarDays className="w-6 h-6 text-blue-600 flex-shrink-0" />
-                                            <div>
-                                                <p className="font-semibold text-gray-900">
-                                                    วันที่: {selectedWork.startDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                                </p>
-                                                <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                                                    <Clock className="w-4 h-4" />
-                                                    เวลา: {selectedWork.startTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })} ({selectedWork.work_shift})
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Department and Worker */}
-                                        <div className="p-3 bg-gray-50 rounded-lg space-y-2">
-                                            <div className="flex items-center gap-3">
-                                                <Briefcase className="w-5 h-5 text-gray-600 flex-shrink-0" />
-                                                <p className="font-medium text-gray-900">หน่วยงาน: {selectedWork.department}</p>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <User className="w-5 h-5 text-gray-600 flex-shrink-0" />
-                                                <p className="font-medium text-gray-900">
-                                                    ช่าง: {selectedWork.worker} 
-                                                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold ${selectedWork.color} ${selectedWork.textColor} ${selectedWork.borderColor} border-l-4`}>
-                                                        {selectedWork.workerRole}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Status */}
-                                        <div className="p-3 bg-yellow-50 rounded-lg">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-3 h-3 rounded-full ${
-                                                    selectedWork.status === 'pending' ? 'bg-yellow-600' : 
-                                                    selectedWork.status === 'inprogress' ? 'bg-blue-600' : 
-                                                    'bg-green-600'
-                                                }`}></div>
-                                                <p className="font-semibold text-gray-900 text-sm">สถานะ:
-                                                    {selectedWork.status === 'pending' && ' รอดำเนินการ (Pending)'}
-                                                    {selectedWork.status === 'inprogress' && ' กำลังดำเนินการ (In Progress)'}
-                                                    {selectedWork.status === 'complete' && ' เสร็จสมบูรณ์ (Complete)'}
-                                                    {selectedWork.status === 'pending' && isPastDuePending(selectedWork) && ' (ล่าช้า)'}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Details */}
-                                        <div className="p-3 bg-gray-50 rounded-lg">
-                                            <div className="flex items-start gap-3">
-                                                <div className="p-2 bg-orange-100 rounded-full flex-shrink-0"><FileText className="w-5 h-5 text-orange-600" /></div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-900 mb-1">รายละเอียด:</p>
-                                                    <p className="text-gray-700 whitespace-pre-wrap">{selectedWork.details}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Footer / Action Buttons */}
-                                    <div className="p-6 border-t bg-white">
-                                        <div className="space-y-3">
-                                            {selectedWork.status === 'pending' && (
-                                                <button 
-                                                    onClick={() => updateWorkStatus(selectedWork.id, 'inprogress')} 
-                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                                                >
-                                                    กดยืนยันว่าเริ่มงานแล้ว (In Progress)
-                                                </button>
-                                            )}
-                                            
-                                            {selectedWork.status === 'inprogress' && (
-                                                <button 
-                                                    onClick={() => updateWorkStatus(selectedWork.id, 'complete')} 
-                                                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                                                >
-                                                    กดยืนยันว่าเสร็จงานแล้ว (Complete)
-                                                </button>
-                                            )}
-                                            
-                                            <button 
-                                                onClick={() => setShowWorkModal(false)} 
-                                                className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                                            >
-                                                ปิด
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
-            </div>
+            ) : (
+                // โหมดปกติ (Normal View / Daily View)
+                <div className="min-h-screen bg-gray-100 p-6">
+                    {/* MODIFIED: Changed max-w-6xl to w-full to use maximum width available */}
+                    <div className="w-full mx-auto transition-all"> 
+                        
+                        {/* Header (แสดงเสมอในโหมดปกติ) */}
+                        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-900">ปฏิทินตารางงานบริษัท</h1>
+                                    <p className="text-gray-600 mt-1">ติดตามตารางงานทั้งหมด</p>
+                                </div>
+                                {/* Back button for Daily View in Header */}
+                                {currentView === 'daily' && (
+                                    <button
+                                        onClick={() => setCurrentView('calendar')}
+                                        className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" /> กลับสู่ปฏิทิน
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Error Message (แสดงเสมอถ้ามี error ในโหมดปกติ) */}
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                                <p className="font-medium">เกิดข้อผิดพลาด:</p>
+                                <p className="text-sm">{error}</p>
+                                {hasSession === false && (
+                                    <button 
+                                        onClick={() => router.push("/auth/login")} 
+                                        className="mt-3 text-sm px-3 py-2 rounded-md bg-neutral-900 text-white hover:bg-neutral-800 transition-colors"
+                                    >
+                                        เข้าสู่ระบบอีกครั้ง
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Main Layout (Calendar + Sidebar OR Daily View) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+                            {/* Conditional Rendering for Main Content */}
+                            {currentView === 'calendar' ? (
+                                <>
+                                    {/* Calendar View */}
+                                    {/* MODIFIED: Fixed col-span to 3 (เพื่อเว้นพื้นที่ให้ Sidebar) */}
+                                    <div className={`lg:col-span-3`}>
+                                        <div className="bg-white rounded-lg shadow-sm">
+                                            {/* Calendar Navigation */}
+                                            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                                                <h2 className="text-xl font-semibold text-gray-900">
+                                                    {currentDate.toLocaleDateString("th-TH", { month: "long", year: "numeric" })}
+                                                </h2>
+                                                <div className="flex gap-2">
+                                                    
+                                                    {/* ปุ่มนำทาง (แสดงเสมอในโหมดปกติ) */}
+                                                    <button 
+                                                        onClick={() => navigateMonth(-1)} 
+                                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
+                                                        aria-label="เดือนก่อนหน้า"
+                                                    >
+                                                        <ChevronLeft className="w-5 h-5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setCurrentDate(new Date())} 
+                                                        className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                                                    >
+                                                        วันนี้
+                                                    </button>
+                                                    
+                                                    {/* *** ปุ่ม Zoom/Unzoom (กดแล้วเปลี่ยนเป็นโหมดเต็มจอ) *** */}
+                                                    <button 
+                                                        onClick={() => setIsCalendarZoomed(true)} 
+                                                        className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-100 hover:bg-gray-200"
+                                                        title="ขยายเต็มจอ"
+                                                    >
+                                                        <Maximize className="w-4 h-4" /> ขยายเต็มจอ
+                                                    </button>
+                                                    {/* ***************************** */}
+                                                    
+                                                    {/* ปุ่มนำทาง (แสดงเสมอในโหมดปกติ) */}
+                                                    <button 
+                                                        onClick={() => navigateMonth(1)} 
+                                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors" 
+                                                        aria-label="เดือนถัดไป"
+                                                    >
+                                                        <ChevronRight className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4">
+                                                {/* Day Names */}
+                                                <div className="grid grid-cols-7 text-center font-medium text-gray-500 mb-2">
+                                                    {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'].map(day => (
+                                                        <div key={day} className="text-sm">{day}</div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Days Grid */}
+                                                <div className="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+                                                    {loading ? (
+                                                        <div className="col-span-7 h-96 flex items-center justify-center">
+                                                            <p className="text-gray-500">กำลังโหลดข้อมูลตารางงาน...</p>
+                                                        </div>
+                                                    ) : (
+                                                        renderCalendarDays()
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Sidebar (แสดงเสมอในโหมดปกติ) */}
+                                    <div className="lg:col-span-1 space-y-6">
+                                        {/* Work Statistics */}
+                                        <div className="bg-white rounded-lg shadow-sm p-6">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">สถิติตารางงาน</h3>
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">รวมทั้งหมด</span>
+                                                    <span className="font-semibold text-lg">{workSchedules.length}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">กำลังดำเนินการ</span>
+                                                    <span className="font-semibold text-lg text-blue-600">{workSchedules.filter(t=>t.status==='inprogress').length}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-gray-600">เสร็จสมบูรณ์</span>
+                                                    <span className="font-semibold text-lg text-green-600">{workSchedules.filter(t=>t.status==='complete').length}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* History Search (ค้นหางานที่เสร็จสมบูรณ์) */}
+                                        <div className="bg-white rounded-lg shadow-sm p-6">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                                                📜 History Search (งานที่เสร็จสมบูรณ์)
+                                            </h3>
+                                            <input
+                                                type="text"
+                                                placeholder="ค้นหารายละเอียดงาน, ช่าง, หน่วยงาน, หรือ DD/MM/YYYY (พ.ศ. หรือ ค.ศ.)..."
+                                                value={searchTerm}
+                                                onChange={(e) => handleSearch(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mb-4 text-sm"
+                                            />
+
+                                            {(searchTerm.trim() === '' && workSchedules.filter(w => w.status === 'complete').length === 0) ? (
+                                                <p className="text-gray-500 text-sm">ไม่พบงานที่เสร็จสมบูรณ์ในระบบ</p>
+                                            ) : (
+                                                <>
+                                                    <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                                                        {pastWorkResults.map((work) => (
+                                                            <div
+                                                                key={work.id}
+                                                                className={`p-3 border-l-4 ${ work.borderColor } bg-gray-50 rounded-r-lg cursor-pointer hover:bg-gray-100 transition`}
+                                                                onClick={() => { setSelectedWork(work); setShowWorkModal(true); }}
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <div>
+                                                                        <p className="font-semibold text-gray-900 text-sm break-words">
+                                                                            {work.title}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-500">
+                                                                            {work.department} | ช่าง: {work.worker}
+                                                                        </p>
+                                                                        {/* FIX FOR RED SQUIGGLY LINE */}
+                                                                        <p className="text-xs text-gray-400">
+                                                                            {`${work.startTime.toLocaleDateString("th-TH", { day: "numeric", month: "short", })} ${work.startTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
+                                                                        </p>
+                                                                    </div>
+                                                                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* Work Status Legend */}
+                                        <div className="bg-white rounded-lg shadow-sm p-6">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                                                สถานะงาน
+                                            </h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
+                                                    <span className="text-gray-700">Pending (รอดำเนินการ)</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                                                    <span className="text-gray-700">In Progress (กำลังดำเนินการ)</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                                                    <span className="text-gray-700">Complete (เสร็จสมบูรณ์)</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 pt-2 border-t mt-2">
+                                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                                    <span className="text-red-700 font-medium">⚠️ Past Due (งานล่าช้า)</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </>
+                            ) : (
+                                // Daily View
+                                <DailyWorkSchedule />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* *** END: Conditional Rendering สำหรับโหมดซูม *** */}
+
+
+            {/* ------------------------------------------------------------------ */}
+            {/* Work Detail Modal (ต้องอยู่ด้านนอก conditional เพื่อให้ overlay ได้ทั้งสองโหมด) */}
+            {/* ------------------------------------------------------------------ */}
+            {showWorkModal && selectedWork && (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn" onClick={() => setShowWorkModal(false)}>
+                    <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full mx-4 transform animate-slideUp max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        
+                        <div className="flex justify-between items-center p-6 border-b">
+                            <h3 className="text-xl font-bold text-gray-900">รายละเอียดงาน</h3>
+                            <button onClick={() => setShowWorkModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(80vh-140px)]">
+                            {/* Date and Time */}
+                            <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-lg">
+                                <CalendarDays className="w-6 h-6 text-blue-600 flex-shrink-0" />
+                                <div>
+                                    <p className="font-semibold text-gray-900">
+                                        วันที่: {selectedWork.startDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                    </p>
+                                    <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
+                                        <Clock className="w-4 h-4" />
+                                        เวลา: {selectedWork.startTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })} ({selectedWork.work_shift})
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Department and Worker */}
+                            <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <Briefcase className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                                    <p className="font-medium text-gray-900">หน่วยงาน: {selectedWork.department}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <User className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                                    <p className="font-medium text-gray-900">
+                                        ช่าง: {selectedWork.worker} 
+                                        <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold ${selectedWork.color} ${selectedWork.textColor} ${selectedWork.borderColor} border-l-4`}>
+                                            {selectedWork.workerRole}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Status */}
+                            <div className="p-3 bg-yellow-50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-3 h-3 rounded-full ${
+                                        selectedWork.status === 'pending' ? 'bg-yellow-600' : 
+                                        selectedWork.status === 'inprogress' ? 'bg-blue-600' : 
+                                        'bg-green-600'
+                                    }`}></div>
+                                    <p className="font-semibold text-gray-900 text-sm">สถานะ:
+                                        {selectedWork.status === 'pending' && ' รอดำเนินการ (Pending)'}
+                                        {selectedWork.status === 'inprogress' && ' กำลังดำเนินการ (In Progress)'}
+                                        {selectedWork.status === 'complete' && ' เสร็จสมบูรณ์ (Complete)'}
+                                        {selectedWork.status === 'pending' && isPastDuePending(selectedWork) && ' (ล่าช้า)'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Details */}
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <div className="p-2 bg-orange-100 rounded-full flex-shrink-0"><FileText className="w-5 h-5 text-orange-600" /></div>
+                                    <div>
+                                        <p className="font-semibold text-gray-900 mb-1">รายละเอียด:</p>
+                                        <p className="text-gray-700 whitespace-pre-wrap">{selectedWork.details}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Footer / Action Buttons */}
+                        <div className="p-6 border-t bg-white">
+                            <div className="space-y-3">
+                                {selectedWork.status === 'pending' && (
+                                    <button 
+                                        onClick={() => updateWorkStatus(selectedWork.id, 'inprogress')} 
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                    >
+                                        กดยืนยันว่าเริ่มงานแล้ว (In Progress)
+                                    </button>
+                                )}
+                                
+                                {selectedWork.status === 'inprogress' && (
+                                    <button 
+                                        onClick={() => updateWorkStatus(selectedWork.id, 'complete')} 
+                                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                    >
+                                        กดยืนยันว่าเสร็จงานแล้ว (Complete)
+                                    </button>
+                                )}
+                                
+                                <button 
+                                    onClick={() => setShowWorkModal(false)} 
+                                    className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                >
+                                    ปิด
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </React.Fragment>
     );
 }
