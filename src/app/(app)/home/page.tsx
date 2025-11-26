@@ -1,9 +1,9 @@
 "use client"; 
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react"; // เพิ่ม useEffect
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Search, X, CalendarDays, Clock, Briefcase, User, FileText } from 'lucide-react'; // เพิ่ม Icon ที่จำเป็น
+import { Search, X, CalendarDays, Clock, Briefcase, User, FileText } from 'lucide-react'; 
 
 // ==============================================================================
 // 1. TYPES & CONSTANTS
@@ -49,13 +49,13 @@ const getColorClasses = (role: string | undefined) => {
         case "ช่างพรินเตอร์":
             return { text: "text-green-700", bg: "bg-green-100", border: "border-green-500" }; 
         case "ช่างเดินระบบ":
-            return { text: "text-purple-700", bg: "bg-purple-100", border: "border-purple-500" }; 
+            return { text: "text-pink-700", bg: "bg-pink-100", border: "border-pink-500" }; 
         default:
             return { text: "text-gray-700", bg: "bg-gray-100", border: "border-gray-500" }; 
     }
 };
 
-// NEW: Helper function to get status badge colors
+// Helper function to get status badge colors
 const getStatusClasses = (status: WorkScheduleItem['status']) => {
     switch (status) {
         case 'pending':
@@ -98,10 +98,12 @@ export default function HomePage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editFormData, setEditFormData] = useState<Partial<WorkFormData & { id: string }>>({});
 
-    // *** NEW: State สำหรับ Modal แสดงรายละเอียด ***
+    // State สำหรับ Modal แสดงรายละเอียด
     const [selectedWork, setSelectedWork] = useState<WorkScheduleItem | null>(null);
     const [showWorkModal, setShowWorkModal] = useState(false);
-    // ---------------------------------------------
+    
+    // NEW: State สำหรับติดตามว่ามีการกรอกข้อมูลในฟอร์มหรือไม่ (สำหรับควบคุม Auto-refresh)
+    const [isFormDirty, setIsFormDirty] = useState(false); 
     
     // State สำหรับควบคุมฟอร์ม
     const initialFormState: WorkFormData = {
@@ -114,10 +116,15 @@ export default function HomePage() {
     };
     const [formData, setFormData] = useState<WorkFormData>(initialFormState);
     
-    // Helper function สำหรับจัดการการเปลี่ยนแปลงในฟอร์ม
+    // Helper function สำหรับจัดการการเปลี่ยนแปลงในฟอร์ม (MODIFIED: เพื่อติดตาม isFormDirty)
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        
+        // ถ้ามีการเปลี่ยนแปลง ให้ตั้งค่า isFormDirty เป็น true
+        if (!isFormDirty) {
+            setIsFormDirty(true);
+        }
     };
 
     // Helper: Function to refresh the schedule data
@@ -130,16 +137,17 @@ export default function HomePage() {
         setWorkSchedule((schedule || []) as WorkScheduleItem[]);
     };
 
-    // *** NEW: Handler for row click to show details ***
+    // Handler for row click to show details
     const handleRowClick = (item: WorkScheduleItem) => {
         if (editingId) return; // ไม่อนุญาตให้เปิด Modal หากกำลังแก้ไข
         setSelectedWork(item);
         setShowWorkModal(true);
     };
 
-    // *** NEW: ฟังก์ชันสำหรับอัปเดตสถานะงาน (ใช้ใน Modal) ***
+    // MODIFIED: ฟังก์ชันสำหรับอัปเดตสถานะงาน (ไม่จำกัดแค่ Admin)
     async function updateWorkStatus(workId: string, newStatus: WorkScheduleItem['status']) {
-        if (!newStatus || !isAdmin) return;
+        if (!newStatus) return; 
+        
         try {
             setLoading(true);
             const { error: updateErr } = await supabase
@@ -155,6 +163,42 @@ export default function HomePage() {
 
         } catch (e) {
             console.error("Error updating work status:", e);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    // NEW: ฟังก์ชันสำหรับลบงาน (Admin Only)
+    async function deleteWork(workId: string) {
+        if (!isAdmin) {
+            alert("คุณไม่มีสิทธิ์ในการลบงาน!");
+            return;
+        }
+
+        if (!window.confirm("คุณแน่ใจหรือไม่ว่าต้องการลบตารางงานนี้? การลบจะไม่สามารถกู้คืนได้")) {
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const { error: deleteError } = await supabase
+                .from("work_schedule")
+                .delete()
+                .eq("id", workId);
+            
+            if (deleteError) throw deleteError;
+
+            // หากลบงานที่กำลังเปิด Modal อยู่ ให้ปิด Modal ด้วย
+            if (selectedWork?.id === workId) {
+                setShowWorkModal(false);
+                setSelectedWork(null);
+            }
+            
+            await refreshSchedule(); // Refresh data
+
+        } catch (e) {
+            console.error("Error deleting work schedule:", e);
+            alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + ((e as { message?: string })?.message || String(e)));
         } finally {
             setLoading(false);
         }
@@ -217,7 +261,6 @@ export default function HomePage() {
 
         } catch (e) {
             console.error("Error updating work schedule:", e);
-            // *** FIX: แก้ไขบรรทัดนี้เพื่อไม่ให้ใช้ any ***
             alert(
                 "เกิดข้อผิดพลาดในการอัปเดตข้อมูล: " + 
                 ((e as { message?: string })?.message || String(e))
@@ -228,7 +271,7 @@ export default function HomePage() {
     }
 
 
-    // Client-side Data Fetching
+    // Client-side Data Fetching (Initial Load)
     React.useEffect(() => {
         async function fetchData() {
             try {
@@ -243,15 +286,8 @@ export default function HomePage() {
                 setUser({ id: authUser.id, email: authUser.email || 'N/A', role: userRole }); 
 
                 // ดึงข้อมูล work_schedule
-                const { data: schedule, error: fetchError } = await supabase
-                    .from("work_schedule")
-                    .select("*")
-                    .order("created_at", { ascending: false });
+                await refreshSchedule(); 
 
-                if (fetchError) {
-                    console.error("Error fetching work schedule:", fetchError);
-                }
-                setWorkSchedule((schedule || []) as WorkScheduleItem[]);
             } catch(e) {
                 console.error("Error during initial fetch:", e);
             } finally {
@@ -262,7 +298,23 @@ export default function HomePage() {
     }, [supabase]);
 
 
-    // Server Action สำหรับเพิ่มตารางงาน (ใช้ข้อมูลจาก State)
+    // NEW: Auto-Refresh Logic (Runs every 60 seconds if form is clean)
+    React.useEffect(() => {
+        const intervalId = setInterval(() => {
+            // ตรวจสอบเงื่อนไข: ถ้าฟอร์มไม่ได้อยู่ในสถานะถูกแก้ไข (isFormDirty = false)
+            if (!isFormDirty) {
+                console.log("Auto-refreshing schedule data...");
+                refreshSchedule();
+            } else {
+                console.log("Auto-refresh paused: Form is being edited.");
+            }
+        }, 60000); // 60000 milliseconds = 1 minute
+
+        // Cleanup function
+        return () => clearInterval(intervalId);
+    }, [isFormDirty]); // Dependency: isFormDirty
+
+    // Server Action สำหรับเพิ่มตารางงาน (MODIFIED - รีเซ็ต isFormDirty)
     async function addWork(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         if (!isAdmin) {
@@ -301,6 +353,8 @@ export default function HomePage() {
             }
 
             setFormData(initialFormState); 
+            // หลังจากบันทึกเสร็จสิ้น ให้รีเซ็ต isFormDirty เป็น false
+            setIsFormDirty(false); 
             await refreshSchedule();
 
         } catch (e) {
@@ -312,7 +366,7 @@ export default function HomePage() {
 
 
     // ==============================================================================
-    // 3. FILTERING AND SORTING LOGIC
+    // 3. FILTERING AND SORTING LOGIC 
     // ==============================================================================
 
     const filteredAndSortedWork = useMemo(() => {
@@ -348,14 +402,14 @@ export default function HomePage() {
 
     if (loading) {
         return (
-            <main className="p-6 max-w-4xl mx-auto">
+            <main className="p-6 w-full mx-auto"> 
                 <p className="text-gray-500">กำลังโหลดข้อมูล...</p>
             </main>
         );
     }
 
     return (
-        <main className="p-6 max-w-4xl mx-auto">
+        <main className="p-6 w-full mx-auto">
             <h1 className="text-2xl font-bold mb-2">📅 ระบบจัดการตารางงาน</h1>
             <p className="mb-6 text-gray-600">
                 สวัสดี **{user?.email}** (Role: **{user?.role}**)
@@ -484,7 +538,7 @@ export default function HomePage() {
                     />
                 </div>
 
-                {(workSchedule.length > 0) ? (
+                {(filteredAndSortedWork.length > 0) ? (
                     <div className="overflow-x-auto bg-white p-4 rounded-lg shadow-md">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
@@ -511,7 +565,6 @@ export default function HomePage() {
                                     return (
                                         <tr 
                                             key={item.id} 
-                                            // *** ADDED cursor-pointer and onClick handler ***
                                             className={`${isEditing ? 'bg-yellow-50' : roleColor.bg} border-l-4 ${roleColor.border} ${isEditing ? 'hover:bg-yellow-50' : 'hover:bg-gray-100 cursor-pointer'} transition-colors`}
                                             onClick={isEditing ? undefined : () => handleRowClick(item)}
                                         >
@@ -552,7 +605,7 @@ export default function HomePage() {
                                                 )}
                                             </td>
 
-                                            {/* 3. สถานะ (Status) - Not Editable for now */}
+                                            {/* 3. สถานะ (Status) */}
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor.bg} ${statusColor.text}`}>
                                                     {statusColor.label}
@@ -576,18 +629,18 @@ export default function HomePage() {
                                             </td>
                                             
                                             {/* 5. รายละเอียด (Detail) - Editable */}
-                                            <td className="px-6 py-4 text-sm max-w-xs">
+                                            <td className="px-6 py-4 text-sm max-w-xs break-words"> 
                                                 {isEditing ? (
                                                     <textarea
                                                         name="detail"
                                                         rows={2}
-                                                        className="w-48 p-1 border rounded-md resize-none"
+                                                        className="w-full min-w-[12rem] p-1 border rounded-md resize-none"
                                                         value={editFormData.detail || ''}
                                                         onChange={handleEditChange}
                                                         onClick={(e) => e.stopPropagation()}
                                                     />
                                                 ) : (
-                                                    <span className="truncate block">{item.detail}</span>
+                                                    <span className="block">{item.detail}</span> 
                                                 )}
                                             </td>
 
@@ -647,12 +700,21 @@ export default function HomePage() {
                                                             </button>
                                                         </div>
                                                     ) : (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); startEdit(item); }}
-                                                            className="text-blue-600 hover:text-blue-900"
-                                                        >
-                                                            แก้ไข/เลื่อน
-                                                        </button>
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); startEdit(item); }}
+                                                                className="text-blue-600 hover:text-blue-900"
+                                                            >
+                                                                แก้ไข/เลื่อน
+                                                            </button>
+                                                            {/* ปุ่มลบงาน */}
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); deleteWork(item.id); }}
+                                                                className="text-red-600 hover:text-red-900 ml-2"
+                                                            >
+                                                                ลบ
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </td>
                                             )}
@@ -672,7 +734,7 @@ export default function HomePage() {
             </div>
 
             {/* ------------------------------------------------------------------ */}
-            {/* *** NEW: Work Detail Modal *** */}
+            {/* Work Detail Modal (MODIFIED) */}
             {/* ------------------------------------------------------------------ */}
             {showWorkModal && selectedWork && (
                 <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowWorkModal(false)}>
@@ -743,48 +805,39 @@ export default function HomePage() {
                             </div>
                         </div>
                         
-                        {/* Footer / Action Buttons (Admin only can change status) */}
-                        {isAdmin && (
-                            <div className="p-6 border-t bg-white">
-                                <div className="space-y-3">
-                                    {selectedWork.status === 'pending' && (
-                                        <button 
-                                            onClick={() => updateWorkStatus(selectedWork.id, 'inprogress')} 
-                                            className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                                        >
-                                            กดยืนยันว่าเริ่มงานแล้ว (In Progress)
-                                        </button>
-                                    )}
-                                    
-                                    {selectedWork.status === 'inprogress' && (
-                                        <button 
-                                            onClick={() => updateWorkStatus(selectedWork.id, 'complete')} 
-                                            className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
-                                        >
-                                            กดยืนยันว่าเสร็จงานแล้ว (Complete)
-                                        </button>
-                                    )}
-                                    
+                        {/* Footer / Action Buttons (ทุก User สามารถเปลี่ยนสถานะได้) */}
+                        <div className="p-6 border-t bg-white">
+                            <div className="space-y-3">
+                                {selectedWork.status === 'pending' && (
                                     <button 
-                                        onClick={() => setShowWorkModal(false)} 
-                                        className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                        onClick={() => updateWorkStatus(selectedWork.id, 'inprogress')} 
+                                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                        disabled={loading}
                                     >
-                                        ปิด
+                                        กดยืนยันว่าเริ่มงานแล้ว (In Progress)
                                     </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {!isAdmin && (
-                            <div className="p-6 border-t bg-white">
+                                )}
+                                
+                                {selectedWork.status === 'inprogress' && (
+                                    <button 
+                                        onClick={() => updateWorkStatus(selectedWork.id, 'complete')} 
+                                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                        disabled={loading}
+                                    >
+                                        กดยืนยันว่าเสร็จงานแล้ว (Complete)
+                                    </button>
+                                )}
+                                
                                 <button 
                                     onClick={() => setShowWorkModal(false)} 
                                     className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+                                    disabled={loading}
                                 >
                                     ปิด
                                 </button>
                             </div>
-                        )}
+                        </div>
+
                     </div>
                 </div>
             )}
