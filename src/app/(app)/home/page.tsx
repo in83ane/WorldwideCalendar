@@ -80,6 +80,16 @@ function getThaiShift(timeStr: string): string {
     return "night"; // 00:00–04:59
 }
 
+// NEW: Helper function to format date from YYYY-MM-DD to DD/MM/YYYY
+function formatDisplayDate(dateStr: string): string {
+    if (!dateStr) return "";
+    const parts = dateStr.split('-'); // e.g., ["2025", "11", "26"]
+    if (parts.length !== 3) return dateStr;
+    const [year, month, day] = parts;
+    // ปรับรูปแบบให้เป็น DD/MM/YYYY
+    return `${day}/${month}/${year}`; 
+}
+
 
 // ==============================================================================
 // 2. MAIN CLIENT COMPONENT
@@ -582,7 +592,8 @@ export default function HomePage() {
                                                         onClick={(e) => e.stopPropagation()}
                                                     />
                                                 ) : (
-                                                    item.work_date
+                                                    // MODIFIED: ใช้ formatDisplayDate เพื่อแสดง DD/MM/YYYY
+                                                    formatDisplayDate(item.work_date)
                                                 )}
                                             </td>
                                             
@@ -753,7 +764,8 @@ export default function HomePage() {
                                 <CalendarDays className="w-6 h-6 text-blue-600 flex-shrink-0" />
                                 <div>
                                     <p className="font-semibold text-gray-900">
-                                        วันที่: {new Date(selectedWork.work_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                        {/* MODIFIED: ใช้ formatDisplayDate เพื่อแสดง DD/MM/YYYY */}
+                                        วันที่: {formatDisplayDate(selectedWork.work_date)}
                                     </p>
                                     <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
                                         <Clock className="w-4 h-4" />
