@@ -3,7 +3,10 @@
 import React, { useMemo, useState, useEffect } from "react"; // เพิ่ม useEffect
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Search, X, CalendarDays, Clock, Briefcase, User, FileText } from 'lucide-react'; 
+// ------------------------------------------------------------------
+// MODIFIED: เพิ่ม Maximize, Minimize icon
+// ------------------------------------------------------------------
+import { Search, X, CalendarDays, Clock, Briefcase, User, FileText, Maximize, Minimize } from 'lucide-react'; 
 
 // ==============================================================================
 // 1. TYPES & CONSTANTS
@@ -80,7 +83,7 @@ function getThaiShift(timeStr: string): string {
     return "night"; // 00:00–04:59
 }
 
-// NEW: Helper function to format date from YYYY-MM-DD to DD/MM/YYYY
+// Helper function to format date from YYYY-MM-DD to DD/MM/YYYY
 function formatDisplayDate(dateStr: string): string {
     if (!dateStr) return "";
     const parts = dateStr.split('-'); // e.g., ["2025", "11", "26"]
@@ -112,8 +115,13 @@ export default function HomePage() {
     const [selectedWork, setSelectedWork] = useState<WorkScheduleItem | null>(null);
     const [showWorkModal, setShowWorkModal] = useState(false);
     
-    // NEW: State สำหรับติดตามว่ามีการกรอกข้อมูลในฟอร์มหรือไม่ (สำหรับควบคุม Auto-refresh)
+    // State สำหรับติดตามว่ามีการกรอกข้อมูลในฟอร์มหรือไม่ (สำหรับควบคุม Auto-refresh)
     const [isFormDirty, setIsFormDirty] = useState(false); 
+
+    // ------------------------------------------------------------------
+    // ADDED: State สำหรับควบคุมโหมดซูมของตาราง
+    // ------------------------------------------------------------------
+    const [isTableZoomed, setIsTableZoomed] = useState(false); 
     
     // State สำหรับควบคุมฟอร์ม
     const initialFormState: WorkFormData = {
@@ -154,7 +162,7 @@ export default function HomePage() {
         setShowWorkModal(true);
     };
 
-    // MODIFIED: ฟังก์ชันสำหรับอัปเดตสถานะงาน (ไม่จำกัดแค่ Admin)
+    // ฟังก์ชันสำหรับอัปเดตสถานะงาน (ไม่จำกัดแค่ Admin)
     async function updateWorkStatus(workId: string, newStatus: WorkScheduleItem['status']) {
         if (!newStatus) return; 
         
@@ -178,7 +186,7 @@ export default function HomePage() {
         }
     }
 
-    // NEW: ฟังก์ชันสำหรับลบงาน (Admin Only)
+    // ฟังก์ชันสำหรับลบงาน (Admin Only)
     async function deleteWork(workId: string) {
         if (!isAdmin) {
             alert("คุณไม่มีสิทธิ์ในการลบงาน!");
@@ -308,7 +316,7 @@ export default function HomePage() {
     }, [supabase]);
 
 
-    // NEW: Auto-Refresh Logic (Runs every 60 seconds if form is clean)
+    // Auto-Refresh Logic (Runs every 60 seconds if form is clean)
     React.useEffect(() => {
         const intervalId = setInterval(() => {
             // ตรวจสอบเงื่อนไข: ถ้าฟอร์มไม่ได้อยู่ในสถานะถูกแก้ไข (isFormDirty = false)
@@ -418,15 +426,31 @@ export default function HomePage() {
         );
     }
 
+    // ------------------------------------------------------------------
+    // MODIFIED: กำหนด Class ของ <main> ตาม isTableZoomed 
+    //           และลบ max-w-6xl ออกจาก Wrapper เพื่อให้เต็มความกว้างเสมอ
+    // ------------------------------------------------------------------
     return (
-        <main className="p-6 w-full mx-auto">
-            <h1 className="text-2xl font-bold mb-2">📅 ระบบจัดการตารางงาน</h1>
-            <p className="mb-6 text-gray-600">
+        <main className={
+            isTableZoomed 
+            ? "fixed inset-0 bg-gray-100 z-50 p-4 overflow-y-auto" 
+            : "p-6 w-full" // ใช้ w-full เพื่อให้กว้างเต็มหน้าจอเสมอ (Normal View)
+        }>
+            {/* Wrapper ที่เคยใช้ควบคุมความกว้างถูกลบออกแล้ว */}
+
+            {/* Header (แสดงเสมอ) */}
+            {/* MODIFIED: ซ่อน <h1> เมื่อ isTableZoomed เป็น true */}
+            <h1 className={`text-2xl font-bold mb-2 ${isTableZoomed ? 'hidden' : ''}`}>
+                📅 ระบบจัดการตารางงาน
+            </h1>
+            
+            {/* ซ่อนเมื่อซูม */}
+            <p className={`mb-6 text-gray-600 ${isTableZoomed ? 'hidden' : ''}`}>
                 สวัสดี **{user?.email}** (Role: **{user?.role}**)
             </p>
 
-            {/* Admin Section: Form */}
-            {isAdmin && (
+            {/* Admin Section: Form (MODIFIED: ซ่อนเมื่อซูม) */}
+            {isAdmin && !isTableZoomed && (
                 <>
                     <h2 className="text-xl font-semibold mb-4 text-blue-600">
                         ➕ เพิ่มตารางงานใหม่ (Admin Panel)
@@ -529,12 +553,35 @@ export default function HomePage() {
 
             {/* Schedule Display Section */}
             <div className="mt-8">
-                <h2 className="text-xl font-semibold mb-4 text-green-700">
-                    📋 ตารางงานทั้งหมด
-                    <span className="text-sm font-normal text-gray-500 ml-3">
-                        {!searchTerm && "(ซ่อนงานที่เสร็จสมบูรณ์ไปแล้ว)"}
-                    </span>
-                </h2>
+                
+                {/* ------------------------------------------------------------------ */}
+                {/* ADDED: Header พร้อมปุ่ม Zoom/Minimize */}
+                {/* ------------------------------------------------------------------ */}
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className={`text-xl font-semibold text-green-700`}>
+                        📋 ตารางงานทั้งหมด
+                        <span className="text-sm font-normal text-gray-500 ml-3">
+                            {!searchTerm && "(ซ่อนงานที่เสร็จสมบูรณ์ไปแล้ว)"}
+                        </span>
+                    </h2>
+                    
+                    {/* Zoom/Minimize Button */}
+                    <button
+                        onClick={() => setIsTableZoomed(!isTableZoomed)}
+                        className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-200 shadow-sm"
+                        title={isTableZoomed ? "ออกจากโหมดซูม" : "ขยายเต็มจอ"}
+                    >
+                        {isTableZoomed ? (
+                            <>
+                                <Minimize className="w-4 h-4" /> ออกจากโหมดซูม
+                            </>
+                        ) : (
+                            <>
+                                <Maximize className="w-4 h-4" /> ขยายเต็มจอ
+                            </>
+                        )}
+                    </button>
+                </div>
 
                 {/* Search Input */}
                 <div className="relative mb-4">
@@ -592,7 +639,7 @@ export default function HomePage() {
                                                         onClick={(e) => e.stopPropagation()}
                                                     />
                                                 ) : (
-                                                    // MODIFIED: ใช้ formatDisplayDate เพื่อแสดง DD/MM/YYYY
+                                                    // ใช้ formatDisplayDate เพื่อแสดง DD/MM/YYYY
                                                     formatDisplayDate(item.work_date)
                                                 )}
                                             </td>
@@ -743,9 +790,11 @@ export default function HomePage() {
                     </p>
                 )}
             </div>
+            {/* End Schedule Display Section */}
+
 
             {/* ------------------------------------------------------------------ */}
-            {/* Work Detail Modal (MODIFIED) */}
+            {/* Work Detail Modal */}
             {/* ------------------------------------------------------------------ */}
             {showWorkModal && selectedWork && (
                 <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowWorkModal(false)}>
@@ -764,7 +813,6 @@ export default function HomePage() {
                                 <CalendarDays className="w-6 h-6 text-blue-600 flex-shrink-0" />
                                 <div>
                                     <p className="font-semibold text-gray-900">
-                                        {/* MODIFIED: ใช้ formatDisplayDate เพื่อแสดง DD/MM/YYYY */}
                                         วันที่: {formatDisplayDate(selectedWork.work_date)}
                                     </p>
                                     <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
