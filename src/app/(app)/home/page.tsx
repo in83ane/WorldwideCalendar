@@ -331,12 +331,12 @@ export default function HomePage() {
                                         <span className={`text-[11px] font-black px-3 py-1 rounded-lg uppercase tracking-wider border-2 ${status.bg} ${status.text} border-current/20`}>
                                             {animationClass.includes('overdue') ? '⚠️ เลยกำหนด' : status.label}
                                         </span>
-                                        <span className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                                        <span className="text-xl font-black text-slate-900 flex items-center gap-1.5 leading-tight">
                                             <div className="w-2 h-2 rounded-full bg-slate-400"></div>
                                             {item.department}
                                         </span>
                                     </div>
-                                    <h3 className="font-black text-slate-900 text-xl leading-tight mb-2">
+                                    <h3 className="text-sm font-black text-slate-700 mb-2">
                                         {item.detail}
                                     </h3>
                                     <div className="flex items-center gap-3">
