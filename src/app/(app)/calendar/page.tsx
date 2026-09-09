@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ChevronLeft, ChevronRight, Clock, CalendarDays,
     X, Search, Building2, User, FileText, Info
@@ -97,11 +97,25 @@ export default function WorkCalendar() {
         return () => clearInterval(timer);
     }, []);
 
-    const fetchWorkSchedules = async () => {
-        const { data, error } = await supabase.from("work_schedule").select("*");
-        if (error) return;
+    const fetchWorkSchedules = useCallback(async () => {
+        const pageSize = 1000;
+        const schedules: WorkScheduleRaw[] = [];
 
-        const mappedData: WorkSchedule[] = (data || []).map((w: WorkScheduleRaw): WorkSchedule => {
+        for (let page = 0; ; page += 1) {
+            const { data, error } = await supabase
+                .from("work_schedule")
+                .select("*")
+                .order("work_date", { ascending: true })
+                .order("work_time", { ascending: true })
+                .order("id", { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) return;
+            schedules.push(...((data || []) as WorkScheduleRaw[]));
+            if (!data || data.length < pageSize) break;
+        }
+
+        const mappedData: WorkSchedule[] = schedules.map((w: WorkScheduleRaw): WorkSchedule => {
             const datePart = new Date(w.work_date + 'T00:00:00');
             const timeParts = w.work_time ? w.work_time.split(':') : ["00", "00"];
             const startTime = new Date(datePart.getFullYear(), datePart.getMonth(), datePart.getDate(), parseInt(timeParts[0]), parseInt(timeParts[1]));
@@ -135,9 +149,27 @@ export default function WorkCalendar() {
             };
         });
         setWorkSchedules(mappedData);
-    };
+    }, [supabase]);
 
-    useEffect(() => { fetchWorkSchedules(); }, [supabase]);
+    useEffect(() => {
+        fetchWorkSchedules();
+
+        const channel = supabase
+            .channel('work-schedule-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'work_schedule' },
+                () => fetchWorkSchedules()
+            )
+            .subscribe();
+
+        const refreshTimer = setInterval(fetchWorkSchedules, 30000);
+
+        return () => {
+            clearInterval(refreshTimer);
+            supabase.removeChannel(channel);
+        };
+    }, [fetchWorkSchedules, supabase]);
 
     const getJobStatusClass = (work: WorkSchedule) => {
         if (work.status === 'inprogress') return "animate-inprogress shadow-lg";

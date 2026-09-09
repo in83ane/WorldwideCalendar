@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -131,33 +131,67 @@ export default function HomePage() {
         return () => clearInterval(timer);
     }, []);
 
-    const refreshSchedule = async () => {
-        const { data: schedule } = await supabase
-            .from("work_schedule")
-            .select("*")
-            .order("work_date", { ascending: true })
-            .order("work_time", { ascending: true });
-        setWorkSchedule((schedule || []) as WorkScheduleItem[]);
-    };
+    const refreshSchedule = useCallback(async () => {
+        const pageSize = 1000;
+        const schedules: WorkScheduleItem[] = [];
+
+        for (let page = 0; ; page += 1) {
+            const { data, error } = await supabase
+                .from("work_schedule")
+                .select("*")
+                .order("work_date", { ascending: true })
+                .order("work_time", { ascending: true })
+                .order("id", { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) {
+                console.error("Unable to load work schedules:", error);
+                return;
+            }
+
+            schedules.push(...((data || []) as WorkScheduleItem[]));
+            if (!data || data.length < pageSize) break;
+        }
+
+        setWorkSchedule(schedules);
+    }, [supabase]);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            refreshSchedule();
-        }, 3 * 60 * 1000); // 3 minutes
-        return () => clearInterval(interval);
-    }, []);
+        const channel = supabase
+            .channel('home-work-schedule-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'work_schedule' },
+                () => refreshSchedule()
+            )
+            .subscribe();
+
+        const refreshTimer = setInterval(refreshSchedule, 30000);
+
+        return () => {
+            clearInterval(refreshTimer);
+            supabase.removeChannel(channel);
+        };
+    }, [refreshSchedule, supabase]);
 
     useEffect(() => {
+        let cancelled = false;
+
         async function fetchData() {
             const { data: { user: authUser } } = await supabase.auth.getUser();
             if (!authUser) return redirect("/auth/login");
             const { data: profile } = await supabase.from("profiles").select("role").eq("id", authUser.id).single();
+            if (cancelled) return;
             setUser({ id: authUser.id, email: authUser.email || 'N/A', role: profile?.role || 'user' });
             await refreshSchedule();
             setLoading(false);
         }
         fetchData();
-    }, []);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [refreshSchedule, supabase]);
 
     const getJobAnimationClass = (item: WorkScheduleItem) => {
         if (item.status === 'complete') return "";
