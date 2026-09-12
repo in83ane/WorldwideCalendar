@@ -177,9 +177,20 @@ export default function WorkCalendar() {
         return `${work.borderColor} ${work.color} ${work.textColor}`;
     };
 
-    const updateWorkStatus = async (id: string, status: string) => {
-        const { error } = await supabase.from("work_schedule").update({ status }).eq("id", id);
-        if (!error) { fetchWorkSchedules(); setShowWorkModal(false); }
+    const updateWorkStatus = async (id: string, status: 'inprogress' | 'complete') => {
+        const { error } = await supabase.rpc("update_work_schedule_status", {
+            schedule_id: id,
+            new_status: status,
+        });
+
+        if (error) {
+            console.error("Unable to update work status:", error);
+            alert("เปลี่ยนสถานะงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+            return;
+        }
+
+        await fetchWorkSchedules();
+        setShowWorkModal(false);
     };
 
     const filteredHistory = useMemo(() => {

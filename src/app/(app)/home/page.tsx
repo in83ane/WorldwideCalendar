@@ -240,12 +240,20 @@ export default function HomePage() {
         }
     }
 
-    async function updateStatus(id: string, newStatus: string) {
-        const { error } = await supabase.from("work_schedule").update({ status: newStatus }).eq("id", id);
-        if (!error) {
-            await refreshSchedule();
-            setShowWorkModal(false);
+    async function updateStatus(id: string, newStatus: 'inprogress' | 'complete') {
+        const { error } = await supabase.rpc("update_work_schedule_status", {
+            schedule_id: id,
+            new_status: newStatus,
+        });
+
+        if (error) {
+            console.error("Unable to update work status:", error);
+            alert("เปลี่ยนสถานะงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+            return;
         }
+
+        await refreshSchedule();
+        setShowWorkModal(false);
     }
 
     const filteredWork = useMemo(() => {
